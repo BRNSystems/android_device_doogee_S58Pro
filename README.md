@@ -3,6 +3,8 @@
 Based on some firmware download from Onedrive, which matched my build number.
 I have also used this firmware for Magisk(boot.img)
 
+Extracted using https://github.com/twrpdtgen/twrpdtgen
+
 ```
 #
 # Copyright (C) 2022 The Android Open Source Project
