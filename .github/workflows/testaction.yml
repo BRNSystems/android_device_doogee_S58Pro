@@ -1,0 +1,71 @@
+name: Converted Workflow
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+jobs:
+  build:
+    runs-on: '${{ matrix.os }}'
+    strategy:
+      matrix:
+        os:
+          - ubuntu-18.04
+    steps:
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |-
+          sudo apt-get update
+          sudo apt-get install -y aria2 xz-utils zstd
+      - uses: actions/checkout@v2
+      - run: >-
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME"
+          --password-stdin 2>/dev/null
+      - run: 'docker pull fr3akyphantom/droid-builder:latest'
+      - run: cd $HOME && mkdir twrp
+      - run: >-
+          TWRP_SOURCE="https://github.com/PhantomZone54/twrp_sources_norepo/releases/download/v3.4.0-20201103/MinimalOmniRecovery-twrp-6.0-norepo-20201103.tzst"
+      - run: >-
+          aria2c -x16 -s8 --console-log-level=error --summary-interval=0
+          "${TWRP_SOURCE}" -o twrp.tzst || wget -q --show-progress
+          --progress=bar:force "${TWRP_SOURCE}" -O twrp.tzst
+      - run: tar --zstd -xf twrp.tzst --directory $HOME/twrp/ && rm twrp.tzst
+      - run: >-
+          cd $HOME/twrp/ && git clone
+          https://github.com/${_USERNAME_}/${_REPO_SLUG_}.git
+          device/${_VENDORNAME_}/${_CODENAME_}
+      - run: >-
+          rm -rf bootable/recovery && git clone
+          https://github.com/omnirom/android_bootable_recovery -b android-9.0
+          --depth 1 bootable/recovery
+      - run: >
+          docker run --rm -i -e USER_ID=$(id -u) -e GROUP_ID=$(id -g) -v
+          "$(pwd):/home/builder/twrp/:rw,z" -v
+          "${HOME}/.ccache:/srv/ccache:rw,z" fr3akyphantom/droid-builder bash <<
+          EOF
+
+          cd /home/builder/twrp/
+
+          source build/envsetup.sh
+
+          # Choose build flavor as "eng" or "userdebug"
+
+          BUILD_FLAVOR="eng"
+
+          lunch omni_${_CODENAME_}-${BUILD_FLAVOR}
+
+          make -j$(nproc --all) recoveryimage
+
+          exit
+
+          EOF
+      - run: >-
+          export version=$(cat bootable/recovery/variables.h | grep "define
+          TW_MAIN_VERSION_STR" | cut -d '"' -f2)
+      - run: >-
+          cp $HOME/twrp/out/target/product/${_CODENAME_}/recovery.img
+          $HOME/twrp/TWRP-$version-${_CODENAME_}-$(date
+          +"%Y%m%d")-Unofficial.img
+      - run: cd $HOME/twrp/
